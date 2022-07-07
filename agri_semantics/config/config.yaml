@@ -1,0 +1,47 @@
+experiment:
+    id: 'active_learner'
+
+##Data
+data:
+    name: 'weedmap'
+    # path_to_dataset: '/home/phenorob-user/Datasets/cityscapes/'
+    # path_to_dataset: '/home/phenorob-user/Datasets/weedmap'
+    # path_to_dataset: '/home/masha/Documents/Datasets/rit'
+    path_to_dataset: '/bayesian_erfnet/agri_semantics/datasets/weedmap/'
+    img_prop:
+        width: 256
+        height:
+        keep_aspect_ratio: true
+    depth: 3
+
+    batch_size: 12
+    train_shuffle: true
+    num_workers: 0
+
+##Training
+train:
+    n_gpus: 1
+    num_workers: 4
+    max_epoch: 500
+    lr: 0.001
+    weight_decay: 0.001
+    num_mc_aleatoric: 50
+    num_mc_epistemic: 25
+    patience: 100
+
+##Network
+model:
+    name: 'erfnet'
+    epistemic_version: 'standard'
+    deep_encoder: false
+    shared_decoder: true
+    num_classes: 3
+    loss: 'xentropy'
+    in_channels: 3
+    dropout_prob: 0.2
+
+##Active Learning
+# active_learning:
+#     type: 'all'
+#     num_collected_images: 100
+#     max_collected_images: 1000

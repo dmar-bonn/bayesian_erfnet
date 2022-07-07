@@ -1,0 +1,44 @@
+version: "3"
+
+services:
+    agri_semantics_trainer:
+        image: agri_semantics_trainer:latest
+        build:
+            context: .
+            dockerfile: Dockerfile
+        networks:
+            - bayesian_erfnet_network
+        volumes:
+            - ${REPO_DIR}:/bayesian_erfnet
+            - /tmp/.X11-unix:/tmp/.X11-unix:rw
+        environment:
+            - REPO_DIR=${REPO_DIR}
+            - DISPLAY=unix${DISPLAY}
+            - QT_X11_NO_MITSHM=1
+            - NVIDIA_VISIBLE_DEVICES=all
+        container_name: agri_semantics_trainer
+        command: "python3 agri_semantics/train.py --config agri_semantics/config/potsdam.yaml"
+        runtime: nvidia
+    agri_semantics_tensorboard:
+        image: agri_semantics_trainer:latest
+        build:
+            context: .
+            dockerfile: Dockerfile
+        ports:
+            - "6006:6006"
+        networks:
+            - bayesian_erfnet_network
+        volumes:
+            - ${REPO_DIR}:/bayesian_erfnet
+            - /tmp/.X11-unix:/tmp/.X11-unix:rw
+        environment:
+            - REPO_DIR=${REPO_DIR}
+            - DISPLAY=unix${DISPLAY}
+            - QT_X11_NO_MITSHM=1
+            - NVIDIA_VISIBLE_DEVICES=all
+        container_name: agri_semantics_tensorboard
+        command: "tensorboard --logdir=/bayesian_erfnet/experiments --bind_all --port=6006"
+
+networks:
+    bayesian_erfnet_network:
+        driver: bridge

@@ -1,0 +1,89 @@
+experiment:
+    id: 'rit18_merged'
+
+##Data
+data:
+    name: 'rit18'
+    # path_to_dataset: '/home/phenorob-user/Datasets/cityscapes/'
+    # path_to_dataset: '/home/phenorob-user/Datasets/weedmap'
+    path_to_dataset: 'agri_semantics/datasets/rit/'
+    img_prop:
+        width: 256
+        height:
+        keep_aspect_ratio: true
+    depth: 3
+
+    batch_size: 8
+    train_shuffle: true
+    num_workers: 0
+
+    altitude: 'all'
+    merge: true
+
+##Training
+train:
+    n_gpus: 1
+    num_workers: 4
+    max_epoch: 500
+    lr: 0.0001
+    weight_decay: 0.001
+    num_mc_aleatoric: 50
+    num_mc_epistemic: 25
+    patience: 100
+
+    transformations:
+        # random_rotation:
+        #   min_angle: -180
+        #   max_angle:  180
+        #   step_size:   2
+        random_crop:
+          height: 
+          width: 200
+        resize:
+          height:
+          width: 256
+          keep_aspect_ratio: true
+        #color_jitter:
+        #  brightness: 0.0 # 0.0-1.0
+        #  contrast: 0.0 # 0.0-1.0
+        #  saturation: 0.8 # 0.0-1.0
+        #  hue: 0.0 # -0.5-0.5
+
+val:
+    transformations:
+        resize:
+          height:
+          width: 256
+          keep_aspect_ratio: true
+
+test:
+    transformations:
+        resize:
+          height:
+          width: 256
+          keep_aspect_ratio: true
+
+##Network
+model:
+    name: 'erfnet'
+    epistemic_version: 'all'
+    deep_encoder: false
+    shared_decoder: true
+    num_classes: 6
+    num_classes_pretrained: 6
+    loss: 'xentropy'
+    in_channels: 3
+    dropout_prob: 0.5
+    # class_frequencies:
+    #   - 0.0306
+    #   - 0.1668
+    #   - 0.5700
+    #   - 0.0116
+    #   - 0.1768
+    #   - 0.0442
+
+##Active Learning
+# active_learning:
+#     type: 'all'
+#     num_collected_images: 50
+#     max_collected_images: 500

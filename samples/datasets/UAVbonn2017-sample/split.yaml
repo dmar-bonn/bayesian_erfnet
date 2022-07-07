@@ -1,0 +1,10 @@
+all:
+- sugar_f1_170912_01_subImages_2_frame20_crop1.png
+- sugar_f1_170912_01_subImages_2_frame20_crop2.png
+test:
+- sugar_f1_170912_01_subImages_2_frame20_crop1.png
+- sugar_f1_170912_01_subImages_2_frame20_crop2.png
+train:
+- sugar_f1_170912_01_subImages_2_frame20_crop1.png
+valid:
+- sugar_f1_170912_01_subImages_2_frame20_crop2.png
