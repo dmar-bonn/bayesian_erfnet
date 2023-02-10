@@ -4,7 +4,7 @@ experiment:
 ##Data
 data:
     name: 'rit18'
-    path_to_dataset: 'bayesian_erfnet_extension/agri_semantics/datasets/rit18/semantic_segmentation'
+    path_to_dataset: 'bayesian_erfnet/agri_semantics/datasets/rit18/semantic_segmentation'
     img_prop:
         width: 400
         height:

@@ -4,7 +4,7 @@ experiment:
 ##Data
 data:
     name: 'flightmare'
-    path_to_dataset: 'bayesian_erfnet_extension/agri_semantics/datasets/flightmare/semantic_segmentation'
+    path_to_dataset: 'bayesian_erfnet/agri_semantics/datasets/flightmare/semantic_segmentation'
     img_prop:
         width: 720
         height: 480

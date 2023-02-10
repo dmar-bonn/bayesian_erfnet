@@ -5,8 +5,8 @@ experiment:
 data:
     name: 'potsdam'
     # path_to_dataset: 'agri_semantics/datasets/potsdam/'
-    # path_to_dataset: 'bayesian_erfnet_extension/agri_semantics/datasets/potsdam/dense_regression'
-    path_to_dataset: 'bayesian_erfnet_extension/agri_semantics/datasets/potsdam/semantic_segmentation'
+    # path_to_dataset: 'bayesian_erfnet/agri_semantics/datasets/potsdam/dense_regression'
+    path_to_dataset: 'bayesian_erfnet/agri_semantics/datasets/potsdam/semantic_segmentation'
     img_prop:
         width: 400
         height:

@@ -5,7 +5,7 @@ experiment:
 data:
     name: 'vaihingen'
     # path_to_dataset: 'agri_semantics/datasets/vaihingen/'
-    path_to_dataset: 'bayesian_erfnet_extension/agri_semantics/datasets/vaihingen/'
+    path_to_dataset: 'bayesian_erfnet/agri_semantics/datasets/vaihingen/'
     img_prop:
         width: 400
         height:
