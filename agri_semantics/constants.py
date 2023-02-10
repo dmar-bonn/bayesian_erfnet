@@ -11,6 +11,7 @@ class Models:
 
 class Losses:
     CROSS_ENTROPY = "xentropy"
+    MSE = "mse"
 
 
 class Maps:

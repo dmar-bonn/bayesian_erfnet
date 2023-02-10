@@ -8,7 +8,65 @@ import seaborn as sns
 import torch
 
 
-def iou_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> float:
+def precision_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> float:
+    def conf_mat_masked(conf_mat):
+        if ignore_index is None:
+            return conf_mat
+
+        conf_mat[ignore_index] = 0.0
+        return conf_mat
+
+    conf_matrices = [conf_mat_masked(conf_mat) for conf_mat in conf_matrices]
+
+    true_positives = [torch.diag(conf_mat) for conf_mat in conf_matrices]
+    num_predictions = [conf_mat.sum(0) for conf_mat in conf_matrices]
+    total_true_positives = torch.sum(torch.stack(true_positives), dim=0)
+    total_num_predictions = torch.sum(torch.stack(num_predictions), dim=0)
+
+    per_class_precision = total_true_positives / total_num_predictions
+    per_class_precision[total_num_predictions == 0] = 0
+
+    if ignore_index is not None:
+        per_class_precision = torch.cat([per_class_precision[:ignore_index], per_class_precision[ignore_index + 1 :]])
+
+    return torch.mean(per_class_precision).item()
+
+
+def recall_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> float:
+    def conf_mat_masked(conf_mat):
+        if ignore_index is None:
+            return conf_mat
+
+        conf_mat[ignore_index] = 0.0
+        return conf_mat
+
+    conf_matrices = [conf_mat_masked(conf_mat) for conf_mat in conf_matrices]
+
+    true_positives = [torch.diag(conf_mat) for conf_mat in conf_matrices]
+    all_positives = [conf_mat.sum(1) for conf_mat in conf_matrices]
+    total_true_positives = torch.sum(torch.stack(true_positives), dim=0)
+    total_all_positives = torch.sum(torch.stack(all_positives), dim=0)
+
+    per_class_recall = total_true_positives / total_all_positives
+    per_class_recall[total_all_positives == 0] = 0
+
+    if ignore_index is not None:
+        per_class_recall = torch.cat([per_class_recall[:ignore_index], per_class_recall[ignore_index + 1 :]])
+
+    return torch.mean(per_class_recall).item()
+
+
+def f1_score_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> float:
+    precision = precision_from_conf_matrices(conf_matrices, ignore_index=ignore_index)
+    recall = recall_from_conf_matrices(conf_matrices, ignore_index=ignore_index)
+
+    if precision + recall == 0.0:
+        return 0.0
+
+    return 2 * (precision * recall) / (precision + recall)
+
+
+def per_class_iou_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> torch.Tensor:
     def conf_mat_masked(conf_mat):
         if ignore_index is None:
             return conf_mat
@@ -27,9 +85,18 @@ def iou_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int 
     iou[total_union == 0] = 0
 
     if ignore_index is not None:
-        iou = torch.cat([iou[:ignore_index], iou[ignore_index + 1 :]])
+        iou[ignore_index] = 0
 
-    return torch.mean(iou).item()
+    return iou
+
+
+def mean_iou_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> float:
+    per_class_iou = per_class_iou_from_conf_matrices(conf_matrices, ignore_index=ignore_index)
+
+    if ignore_index is not None:
+        per_class_iou = torch.cat([per_class_iou[:ignore_index], per_class_iou[ignore_index + 1 :]])
+
+    return torch.mean(per_class_iou).item()
 
 
 def accuracy_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> float:
@@ -44,7 +111,7 @@ def accuracy_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index:
     true_predictions = torch.stack([torch.sum(torch.diag(conf_mat_masked(conf_mat))) for conf_mat in conf_matrices])
     num_predictions = torch.stack([torch.sum(conf_mat_masked(conf_mat)) for conf_mat in conf_matrices])
 
-    return torch.sum(true_predictions) / torch.sum(num_predictions)
+    return (torch.sum(true_predictions) / torch.sum(num_predictions)).item()
 
 
 def total_conf_matrix_from_conf_matrices(conf_matrices: List[torch.Tensor]) -> torch.Tensor:

@@ -66,7 +66,7 @@ def plot_experiment_results(cfg: Dict, active_learner_results: Dict):
         num_data_points_list = list(active_learner_results[active_learner_type].keys())
         for num_data_points in active_learner_results[active_learner_type].keys():
             test_losses.append(active_learner_results[active_learner_type][num_data_points]["Test/Loss"])
-            test_ious.append(active_learner_results[active_learner_type][num_data_points]["Test/IoU"])
+            test_ious.append(active_learner_results[active_learner_type][num_data_points]["Test/mIoU"])
             test_f1_scores.append(active_learner_results[active_learner_type][num_data_points]["Test/F1"])
             test_accs.append(active_learner_results[active_learner_type][num_data_points]["Test/Acc"])
 
