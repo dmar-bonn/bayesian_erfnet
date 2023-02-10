@@ -8,6 +8,7 @@ from agri_semantics.models import get_model
 from pytorch_lightning import Trainer
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from typing import Dict
 
 
 ##############################################################################################
@@ -24,7 +25,7 @@ def monitoring_metric(task) -> str:
     elif task == "regression":
         return "RMSE"
     else:
-        raise NotImplementedError(f"No monitoring metric implemented for {task} task!")
+        raise NotImplementedError(f"No early stopping metric implemented for {task} task!")
 
 
 def monitoring_mode(task) -> str:
@@ -55,41 +56,50 @@ def monitoring_mode(task) -> str:
 @click.option(
     "--checkpoint", "-ckpt", type=str, help="path to checkpoint file (.ckpt) to resume training.", default=None
 )
-def main(config, weights, checkpoint):
+def main(config: str, weights: str = None, checkpoint: str = None):
     with open(config, "r") as config_file:
         cfg = yaml.safe_load(config_file)
     cfg["git_commit_version"] = str(subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).strip())
 
-    # Load data and model
-    data = get_data_module(cfg)
-    model = get_model(cfg)
-    print(model)
+    data_modules = [get_data_module(cfg) for _ in range(cfg["model"]["num_models"])]
+    models = [get_model(cfg) for _ in range(cfg["model"]["num_models"])]
 
     if weights:
-        model = model.load_from_checkpoint(weights, cfg=cfg)
+        for i in range(cfg["model"]["num_models"]):
+            models[i] = models[i].load_from_checkpoint(f"{weights}_model{i}.ckpt", cfg=cfg)
 
-    # Add callbacks
+    trainers = [setup_trainer(i, cfg, checkpoint) for i in range(cfg["model"]["num_models"])]
+    for i in range(cfg["model"]["num_models"]):
+        print("-------------------------------------------------------------------")
+        print(f"TRAIN {cfg['model']['name']} model {i}")
+        trainers[i].fit(models[i], data_modules[i])
+
+
+def setup_trainer(model_id: int, cfg: Dict, checkpoint: str) -> Trainer:
     lr_monitor = LearningRateMonitor(logging_interval="step")
     checkpoint_saver = ModelCheckpoint(
         monitor=f"Validation/{monitoring_metric(cfg['model']['task'])}",
-        filename=cfg["experiment"]["id"] + "_{epoch:02d}_{iou:.2f}",
+        filename=f"{cfg['experiment']['id']}_model{model_id}_best",
         mode=monitoring_mode(cfg["model"]["task"]),
         save_last=True,
     )
+    tb_logger = pl_loggers.TensorBoardLogger(
+        f"experiments/{cfg['experiment']['id']}",
+        name=f"{cfg['model']['name']}_{model_id}",
+        default_hp_metric=False,
+    )
 
-    tb_logger = pl_loggers.TensorBoardLogger(f"experiments/{cfg['experiment']['id']}", default_hp_metric=False)
-
-    # Setup trainer
+    tmp_checkpoint = f"{checkpoint}_model{model_id}.ckpt" if checkpoint is not None else None
     trainer = Trainer(
         gpus=cfg["train"]["n_gpus"],
         logger=tb_logger,
-        resume_from_checkpoint=checkpoint,
+        resume_from_checkpoint=tmp_checkpoint,
         max_epochs=cfg["train"]["max_epoch"],
         callbacks=[lr_monitor, checkpoint_saver],
+        log_every_n_steps=1,
     )
 
-    # Train!
-    trainer.fit(model, data)
+    return trainer
 
 
 if __name__ == "__main__":

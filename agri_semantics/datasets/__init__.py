@@ -1,11 +1,13 @@
 from agri_semantics.datasets.CityscapesDataset import CityscapesDataModule
+from agri_semantics.datasets.RIT18Dataset import RIT18DataModule
 from agri_semantics.datasets.UAVDataset import UAVDataModule
 from agri_semantics.datasets.WeedmapDataset import WeedmapDataModule
-from agri_semantics.datasets.RIT18Dataset import RIT18DataModule
+from agri_semantics.datasets.flightmare import FlightmareDataModule
 from agri_semantics.datasets.potsdam import PotsdamDataModule
+from pytorch_lightning import LightningDataModule
 
 
-def get_data_module(cfg):
+def get_data_module(cfg) -> LightningDataModule:
     name = cfg["data"]["name"]
     if name == "uav":
         return UAVDataModule(cfg)
@@ -17,5 +19,7 @@ def get_data_module(cfg):
         return RIT18DataModule(cfg)
     elif name == "potsdam":
         return PotsdamDataModule(cfg)
+    elif name == "flightmare":
+        return FlightmareDataModule(cfg)
     else:
-        raise RuntimeError(f"{type(cfg)} not a valid config")
+        raise ValueError(f"Dataset '{name}' not found!")

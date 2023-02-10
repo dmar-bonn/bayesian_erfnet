@@ -18,6 +18,7 @@ services:
             - NVIDIA_VISIBLE_DEVICES=all
         container_name: agri_semantics_trainer
         command: "python3 agri_semantics/train.py --config agri_semantics/config/potsdam.yaml"
+        # command: "python3 agri_semantics/train_ensemble.py --config agri_semantics/config/potsdam.yaml"
         runtime: nvidia
     agri_semantics_tensorboard:
         image: agri_semantics_trainer:latest

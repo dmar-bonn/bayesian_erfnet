@@ -5,12 +5,11 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
+from agri_semantics.constants import Maps
+from agri_semantics.transformations import Transformation, get_transformations
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import transforms
-
-from agri_semantics.constants import Maps
-from agri_semantics.transformations import Transformation, get_transformations
 
 
 class RIT18DataModule(LightningDataModule):
@@ -115,12 +114,12 @@ class RIT18Dataset(Dataset):
         super().__init__()
 
         if not os.path.exists(path_to_dataset):
-            raise FileNotFoundError
+            raise FileNotFoundError(f"RIT18 dataset path '{path_to_dataset}' not found")
 
         # get path to all RGB images
         self.path_to_images = os.path.join(path_to_dataset, "image")
         if not os.path.exists(self.path_to_images):
-            raise FileNotFoundError
+            raise FileNotFoundError(f"RIT18 images path '{self.path_to_images}' not found")
 
         self.image_files = []
         for fname in os.listdir(self.path_to_images):
@@ -131,7 +130,7 @@ class RIT18Dataset(Dataset):
         # get path to all ground-truth semantic annotation
         self.path_to_annos = os.path.join(path_to_dataset, "anno")
         if not os.path.exists(self.path_to_annos):
-            raise FileNotFoundError
+            raise FileNotFoundError(f"RIT18 annotations path '{self.path_to_annos}' not found")
 
         self.anno_files = []
         for fname in os.listdir(self.path_to_annos):

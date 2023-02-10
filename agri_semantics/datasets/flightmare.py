@@ -6,12 +6,13 @@ import numpy as np
 import torch
 from PIL import Image
 from agri_semantics.transformations import get_transformations, Transformation
+from agri_semantics.utils.utils import LABELS
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import transforms
 
 
-class PotsdamDataModule(LightningDataModule):
+class FlightmareDataModule(LightningDataModule):
     def __init__(self, cfg: Dict):
         super().__init__()
 
@@ -29,10 +30,10 @@ class PotsdamDataModule(LightningDataModule):
 
         # Assign datasets for use in dataloaders
         if stage == "fit" or stage is None:
-            self._train = PotsdamDataset(
+            self._train = FlightmareDataset(
                 path_to_training_dataset, self.cfg, transformations=get_transformations(self.cfg, "train")
             )
-            self._val = PotsdamDataset(
+            self._val = FlightmareDataset(
                 path_to_validation_dataset, self.cfg, transformations=get_transformations(self.cfg, "val")
             )
 
@@ -42,7 +43,7 @@ class PotsdamDataModule(LightningDataModule):
                 self.all_indices = np.sort(np.random.choice(train_indices, size=max_num_indices, replace=False))
 
         if stage == "test" or stage is None:
-            self._test = PotsdamDataset(
+            self._test = FlightmareDataset(
                 path_to_test_dataset, self.cfg, transformations=get_transformations(self.cfg, "test")
             )
 
@@ -102,7 +103,7 @@ def is_image(filename):
     return any(filename.endswith(ext) for ext in [".jpg", ".png"])
 
 
-class PotsdamDataset(Dataset):
+class FlightmareDataset(Dataset):
     def __init__(self, path_to_dataset: str, cfg: Dict, transformations: List[Transformation]):
         super().__init__()
 
@@ -170,51 +171,38 @@ class PotsdamDataset(Dataset):
             anno = (self.cfg["model"]["value_range"]["max_value"] / 255) * anno
             return torch.from_numpy(anno).float().unsqueeze(dim=0)
         else:
-            raise NotImplementedError(f"{self.task} task is not implemented for Potsdam dataset!")
+            raise NotImplementedError(f"{self.task} task is not implemented for Flightmare dataset!")
 
     @staticmethod
     def remap_annotation(anno: np.array) -> torch.Tensor:
         """
         After remapping the annotations have the labels:
 
-        potsdam:
-            - 0 := boundary line,
-            - 1 := imprevious surfaces,
-            - 2 := building,
-            - 3 := low vegetation,
-            - 4 := tree,
-            - 5 := car,
-            - 6 := clutter/background
+        Flightmare:
+            - 0 := Background: [0, 0, 0] and any non-defined color
+            - 1 := Floor: [2, 73, 9]
+            - 2 := Hangar: [32, 73, 65]
+            - 3 := Fence: [6, 73, 72]
+            - 4 := Road: [36, 73, 8]
+            - 5 := Tank: [2, 73, 128]
+            - 6 := Pipe: [32, 9, 201]
+            - 7 := Container: [6, 9, 193]
+            - 8 := Misc: [36, 9, 129]
+            - 9 := Boundary: Any other color
         """
 
         dims = anno.shape
         assert len(dims) == 3, "wrong matrix dimension!!!"
         assert dims[0] == 3, "annotation must have 3 channels!!!"
-        remapped = np.zeros((dims[1], dims[2]))
 
-        mask1 = anno[0, :, :] == 255  # B = 255
-        mask2 = anno[1, :, :] == 255  # G = 255
-        mask3 = anno[2, :, :] == 255  # R = 255
-        mask4 = anno[0, :, :] == 0  # B = 0
-        mask5 = anno[1, :, :] == 0  # G = 0
-        mask6 = anno[2, :, :] == 0  # R = 0
+        flightmare_labels = LABELS["flightmare"]
+        remapped_anno = np.ones((dims[1], dims[2])) * flightmare_labels["boundary"]["id"]
 
-        mask_surface = mask1 * mask2 * mask3
-        remapped[mask_surface] = 1
+        for label_key, label_info in flightmare_labels.items():
+            if label_key == "boundary":
+                continue
 
-        mask_building = mask1 * mask5 * mask6
-        remapped[mask_building] = 2
+            label_color = np.flip(np.array(label_info["color"])).reshape((3, 1, 1))
+            remapped_anno[(anno == label_color).all(axis=0)] = label_info["id"]
 
-        mask_veg = mask1 * mask2 * mask6
-        remapped[mask_veg] = 3
-
-        mask_tree = mask2 * mask4 * mask6
-        remapped[mask_tree] = 4
-
-        mask_car = mask2 * mask3 * mask4
-        remapped[mask_car] = 5
-
-        mask_bg = mask3 * mask4 * mask5
-        remapped[mask_bg] = 6
-
-        return torch.from_numpy(remapped).long()
+        return torch.from_numpy(remapped_anno).long()

@@ -2,17 +2,17 @@ import copy
 from typing import Dict
 
 import numpy as np
+import torch
+from agri_semantics.constants import Models
+from agri_semantics.datasets import get_data_module
+from agri_semantics.models import get_model
+from agri_semantics.utils import utils
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning import Trainer
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.core.lightning import LightningModule
-
-from agri_semantics.constants import Models
-from agri_semantics.datasets import get_data_module
-from agri_semantics.models import get_model
-from agri_semantics.utils import utils
 
 
 class ActiveLearner:
@@ -27,6 +27,7 @@ class ActiveLearner:
         self.data_module = self.setup_data_module()
         self.model = self.setup_model()
         self.trainer = self.setup_trainer(0)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_collected_images = min(
             cfg["active_learning"]["num_collected_images"], len(self.data_module.unlabeled_dataloader().dataset)
@@ -42,7 +43,7 @@ class ActiveLearner:
         return data_module
 
     def setup_model(self, num_train_data: int = 1) -> LightningModule:
-        model = get_model(self.cfg, num_train_data)
+        model = get_model(self.cfg, num_train_data=num_train_data)
         if self.weights_path:
             model = model.load_from_checkpoint(self.weights_path, hparams=self.cfg)
             if self.cfg["model"]["num_classes_pretrained"] != self.cfg["model"]["num_classes"]:
@@ -52,11 +53,11 @@ class ActiveLearner:
 
     def setup_trainer(self, iter_count: int):
         early_stopping = EarlyStopping(
-            monitor="val:iou", min_delta=0.00, patience=self.patience, verbose=False, mode="max"
+            monitor="Validation/mIoU", min_delta=0.00, patience=self.patience, verbose=False, mode="max"
         )
         lr_monitor = LearningRateMonitor(logging_interval="step")
         checkpoint_saver = ModelCheckpoint(
-            monitor="val:iou",
+            monitor="Validation/mIoU",
             filename=f"{self.cfg['experiment']['id']}_{self.strategy_name}_iter{str(iter_count)}"
             + "_{epoch:02d}_{iou:.2f}",
             mode="max",
@@ -87,7 +88,7 @@ class ActiveLearner:
         self.data_module.append_data_indices(self.select_data())
 
     def retrain_model(self, num_train_data: int):
-        self.model = self.setup_model(num_train_data)
+        self.model = self.setup_model(num_train_data=num_train_data)
         self.trainer.fit(self.model, self.data_module)
         self.model = self.model.load_from_checkpoint(
             self.trainer.checkpoint_callback.best_model_path, hparams=self.cfg_fine_tuned
@@ -105,7 +106,7 @@ class ActiveLearner:
         self.model.logger.experiment.add_scalar("ActiveLearning/Loss", test_statistics["Test/Loss"], num_train_data)
         self.model.logger.experiment.add_scalar("ActiveLearning/Acc", test_statistics["Test/Acc"], num_train_data)
         self.model.logger.experiment.add_scalar("ActiveLearning/F1", test_statistics["Test/F1"], num_train_data)
-        self.model.logger.experiment.add_scalar("ActiveLearning/IoU", test_statistics["Test/IoU"], num_train_data)
+        self.model.logger.experiment.add_scalar("ActiveLearning/mIoU", test_statistics["Test/mIoU"], num_train_data)
         self.model.logger.experiment.add_scalar("ActiveLearning/ECE", test_statistics["Test/ECE"], num_train_data)
 
     def run(self):
@@ -138,6 +139,7 @@ class BALDActiveLearner(ActiveLearner):
         super(BALDActiveLearner, self).__init__(cfg, weights_path, checkpoint_path, strategy_name)
 
         self.num_mc_epistemic = cfg["train"]["num_mc_epistemic"]
+        self.num_mc_aleatoric = cfg["train"]["num_mc_aleatoric"]
         self.aleatoric_model = cfg["model"]["name"] == Models.BAYESIAN_ERFNET
 
     def select_data(self):
@@ -147,15 +149,16 @@ class BALDActiveLearner(ActiveLearner):
         bald_objectives = np.ones(len(unlabeled_indices))
 
         for j, batch in enumerate(unlabeled_dataloader):
-            (
-                mean_predictions,
-                variance_predictions,
-                entropy_predictions,
-                mutual_info_predictions,
-            ) = utils.get_mc_dropout_predictions(
-                self.model, batch, self.num_mc_epistemic, aleatoric_model=self.aleatoric_model
+            mean_predictions, uncertainty_predictions, hidden_representations = utils.get_predictions(
+                self.model,
+                batch,
+                num_mc_dropout=self.num_mc_epistemic,
+                aleatoric_model=self.aleatoric_model,
+                num_mc_aleatoric=self.num_mc_aleatoric,
+                ensemble_model=False,
+                device=self.device,
             )
-            mean_mutual_information = np.mean(mutual_info_predictions, axis=(1, 2))
+            mean_mutual_information = np.mean(uncertainty_predictions, axis=(1, 2))
             for i, idx in enumerate(batch["index"]):
                 bald_objectives[unlabeled_indices == idx.item()] = mean_mutual_information[i]
 

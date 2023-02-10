@@ -1,10 +1,12 @@
 experiment:
-    id: 'active_learning_lawnmower'
+    id: 'test_classification_task'
 
 ##Data
 data:
     name: 'potsdam'
-    path_to_dataset: 'bayesian_erfnet/agri_semantics/datasets/potsdam/'
+    # path_to_dataset: 'agri_semantics/datasets/potsdam/'
+    # path_to_dataset: 'bayesian_erfnet_extension/agri_semantics/datasets/potsdam/dense_regression'
+    path_to_dataset: 'bayesian_erfnet_extension/agri_semantics/datasets/potsdam/semantic_segmentation'
     img_prop:
         width: 400
         height:
@@ -60,12 +62,19 @@ test:
 ##Network
 model:
     name: 'erfnet'
+    task: 'classification' # regression, classification
+    aleatoric_model: false
+    ensemble_model: false
+    num_models: 1
     epistemic_version: 'all'
     deep_encoder: false
     shared_decoder: true
     num_classes: 7
     num_classes_pretrained: 20
-    loss: 'xentropy'
+    value_range: # used for bounding predicted regression values
+        min_value: 0.0
+        max_value: 25.5
+    loss: 'xentropy' # xentropy, mse
     in_channels: 3
     dropout_prob: 0.5
     # class_frequencies:

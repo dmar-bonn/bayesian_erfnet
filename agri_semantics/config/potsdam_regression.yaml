@@ -1,20 +1,20 @@
 experiment:
-    id: 'rit18'
+    id: 'test_regression_task'
 
 ##Data
 data:
-    name: 'rit18'
-    path_to_dataset: 'bayesian_erfnet_extension/agri_semantics/datasets/rit18/semantic_segmentation'
+    name: 'potsdam'
+    # path_to_dataset: 'agri_semantics/datasets/potsdam/'
+    # path_to_dataset: 'bayesian_erfnet_extension/agri_semantics/datasets/potsdam/dense_regression'
+    path_to_dataset: 'bayesian_erfnet_extension/agri_semantics/datasets/potsdam/dense_regression'
     img_prop:
         width: 400
         height:
         keep_aspect_ratio: true
     depth: 3
-
     batch_size: 8
     train_shuffle: true
     num_workers: 0
-    merge: false
 
 ##Training
 train:
@@ -36,9 +36,9 @@ train:
         #   height:
         #   width: 200
         resize:
-            height:
-            width: 344
-            keep_aspect_ratio: true
+          height:
+          width: 344
+          keep_aspect_ratio: true
         #color_jitter:
         #  brightness: 0.0 # 0.0-1.0
         #  contrast: 0.0 # 0.0-1.0
@@ -62,24 +62,31 @@ test:
 ##Network
 model:
     name: 'erfnet'
-    task: 'classification' # regression, classification
+    task: 'regression' # regression, classification
     aleatoric_model: false
     ensemble_model: false
     num_models: 1
     epistemic_version: 'all'
     deep_encoder: false
     shared_decoder: true
-    num_classes: 19
+    num_classes: 1
     num_classes_pretrained: 20
     value_range: # used for bounding predicted regression values
         min_value: 0.0
         max_value: 25.5
-    loss: 'xentropy' # xentropy, mse
+    loss: 'mse' # xentropy, mse
     in_channels: 3
     dropout_prob: 0.5
+    # class_frequencies:
+    #   - 0.0306
+    #   - 0.1668
+    #   - 0.5700
+    #   - 0.0116
+    #   - 0.1768
+    #   - 0.0442
 
-# Active Learning
+##Active Learning
 active_learning:
     type: 'all'
-    num_collected_images: 100
-    max_collected_images: 1000
+    num_collected_images: 50
+    max_collected_images: 500

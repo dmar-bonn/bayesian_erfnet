@@ -1,19 +1,25 @@
 # Bayesian ERFNet - Pytorch Lightning Implementation
 
-This repository is a submodule of our paper "Informative Path Planning for Active Learning in 
-Aerial Semantic Mapping". The repository provides Pytorch Lightning implementations to train and
-evaluate our proposed Bayesian ERFNet for per-pixel model uncertainty quantification with Monte-Carlo 
-dropout. The paper can be found [here](https://arxiv.org/pdf/2203.01652.pdf). If you found this work useful for your own research, feel free to cite it.
+This repository is a submodule of our paper "An Informative Path Planning Framework for Active Learning in UAV-based Semantic Mapping". The repository provides Pytorch Lightning implementations to train and
+evaluate our proposed general Bayesian ERFNet framework for semantic segmentation quantifying per-pixel model uncertainty using ensembles and Monte-Carlo 
+dropout. The paper can be found [here](https://arxiv.org/abs/2302.03347). If you found this work useful for your own research, feel free to cite it.
 
 ```commandline
-@inproceedings{ruckin2022informative,
-  title={Informative Path Planning for Active Learning in Aerial Semantic Mapping},
-  author={R{\"u}ckin, Julius and Jin, Liren and Magistri, Federico and Stachniss, Cyrill and Popovi{\'c}, Marija},
-  booktitle={2022 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
-  year={2022},
-  organization={IEEE}
+@article{ruckin2023informativeframework,
+  title={{An Informative Path Planning Framework for Active Learning in UAV-based Semantic Mapping}},
+  author={R{\"u}ckin, Julius and Magistri, Federico and Stachniss, Cyrill and Popovi{\'c}, Marija},
+  journal={arXiv preprint arXiv:2302.03347},
+  year={2023},
 }
 ```
+
+## Network Overview
+
+![network Architecture](docs/erfnet.png)
+
+Our Bayesian ERFNet architecture for probabilistic semantic segmentation. 
+We extend the network of Romera et al. with Monte-Carlo dropout (orange layers) to predict model uncertainty. 
+Our network takes as input RGB (left) and outputs semantic labels (second from right) and pixel-wise uncertainty (first from right).
 
 ## Installation & Setup
 

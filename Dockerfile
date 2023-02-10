@@ -1,4 +1,4 @@
-FROM pytorchlightning/pytorch_lightning
+FROM ubuntu:20.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -10,6 +10,6 @@ COPY requirements.txt .
 RUN pip3 install -r requirements.txt && \
     rm -r ~/.cache/pip
 
-ENV PYTHONPATH "${PYTHONPATH}:/bayesian_erfnet"
+ENV PYTHONPATH="${PYTHONPATH}:/bayesian_erfnet"
 
 WORKDIR "/bayesian_erfnet"
