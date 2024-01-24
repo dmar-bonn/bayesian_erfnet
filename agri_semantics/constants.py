@@ -7,11 +7,17 @@ class ActiveLearners:
 class Models:
     ERFNET = "erfnet"
     BAYESIAN_ERFNET = "bayesian_erfnet"
+    EVIDENTIAL_ERFNET = "evidential_erfnet"
+    UNET = "unet"
 
 
 class Losses:
     CROSS_ENTROPY = "xentropy"
+    SOFT_IOU = "soft_iou"
     MSE = "mse"
+    PAC_TYPE_2_MLE = "pac_type_2_mle"
+    CROSS_ENTROPY_BAYES_RISK = "xentropy_bayes_risk"
+    MSE_BAYES_RISK = "mse_bayes_risk"
 
 
 class Maps:

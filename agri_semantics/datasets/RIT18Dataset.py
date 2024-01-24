@@ -48,9 +48,7 @@ class RIT18DataModule(LightningDataModule):
 
         if stage == "test" or stage is None:
             self._test = RIT18Dataset(
-                path_to_test_dataset,
-                transformations=get_transformations(self.cfg, "test"),
-                merge_classes=merge_classes,
+                path_to_test_dataset, transformations=get_transformations(self.cfg, "test"), merge_classes=merge_classes
             )
 
     def append_data_indices(self, indices):
@@ -71,7 +69,9 @@ class RIT18DataModule(LightningDataModule):
         train_dataset = self._train
         unlabeled_data = Subset(train_dataset, self.get_unlabeled_data_indices())
 
-        loader = DataLoader(unlabeled_data, batch_size=batch_size, shuffle=False, num_workers=n_workers)
+        loader = DataLoader(
+            unlabeled_data, batch_size=batch_size, shuffle=False, num_workers=n_workers, pin_memory=True
+        )
 
         return loader
 
@@ -84,7 +84,9 @@ class RIT18DataModule(LightningDataModule):
         if self.active_learning:
             train_dataset = Subset(train_dataset, self.data_indices)
 
-        loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=n_workers)
+        loader = DataLoader(
+            train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=n_workers, pin_memory=True
+        )
 
         return loader
 
@@ -92,7 +94,7 @@ class RIT18DataModule(LightningDataModule):
         batch_size = self.cfg["data"]["batch_size"]
         n_workers = self.cfg["data"]["num_workers"]
 
-        loader = DataLoader(self._val, batch_size=batch_size, num_workers=n_workers, shuffle=False)
+        loader = DataLoader(self._val, batch_size=batch_size, num_workers=n_workers, shuffle=False, pin_memory=True)
 
         return loader
 
@@ -100,7 +102,7 @@ class RIT18DataModule(LightningDataModule):
         batch_size = self.cfg["data"]["batch_size"]
         n_workers = self.cfg["data"]["num_workers"]
 
-        loader = DataLoader(self._test, batch_size=batch_size, num_workers=n_workers, shuffle=False)
+        loader = DataLoader(self._test, batch_size=batch_size, num_workers=n_workers, shuffle=False, pin_memory=True)
 
         return loader
 
@@ -138,6 +140,17 @@ class RIT18Dataset(Dataset):
                 self.anno_files.append(fname)
         self.anno_files.sort()
 
+        # get path to all prediction uncertainties
+        self.load_uncertainties = False
+        self.path_to_uncertainties = os.path.join(path_to_dataset, "uncertainty")
+        if os.path.exists(self.path_to_uncertainties):
+            self.load_uncertainties = True
+            self.uncertainty_files = []
+            for fname in os.listdir(self.path_to_uncertainties):
+                if is_image(fname):
+                    self.uncertainty_files.append(fname)
+            self.uncertainty_files.sort()
+
         # specify image transformations
         self.img_to_tensor = transforms.ToTensor()
         self.transformations = transformations
@@ -167,13 +180,26 @@ class RIT18Dataset(Dataset):
             anno = torch.Tensor(anno).type(torch.int64)
         anno = torch.unsqueeze(anno, 0)
 
+        uncertainty = torch.zeros((1, anno.size(1), anno.size(2)))
+        if self.load_uncertainties:
+            path_to_current_uncertainty = os.path.join(self.path_to_uncertainties, self.uncertainty_files[idx])
+            if os.path.exists(path_to_current_uncertainty):
+                uncertainty = self.get_uncertainty(path_to_current_uncertainty)
+
         # apply a set of transformations to the raw_image, image and anno
         for transformer in self.transformations:
-            img_pil, img, anno = transformer(img_pil, img, anno)
+            img_pil, img, anno, uncertainty = transformer(img_pil, img, anno, uncertainty)
 
         anno = torch.squeeze(anno, 0)
 
-        return {"data": img, "image": img, "anno": anno, "index": idx}
+        return {"data": img, "image": img, "anno": anno, "uncertainty": uncertainty, "index": idx}
+
+    @staticmethod
+    def get_uncertainty(path_to_current_uncertainty: str) -> torch.Tensor:
+        uncertainty = cv2.imread(path_to_current_uncertainty, cv2.IMREAD_GRAYSCALE)  # 0 to 255 value range
+        uncertainty = uncertainty.astype(np.float32) / 255  # normalize uncertainties between 0 and 1
+        uncertainty = np.moveaxis(uncertainty, -1, 0)  # now in HW mode
+        return torch.from_numpy(uncertainty).float().unsqueeze(dim=0)
 
     def __len__(self):
         return len(self.image_files)

@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import cv2
 import numpy as np
@@ -12,7 +12,7 @@ from torchvision import transforms
 
 
 class PotsdamDataModule(LightningDataModule):
-    def __init__(self, cfg: Dict):
+    def __init__(self, cfg: Dict, human_data: bool, pseudo_data: bool):
         super().__init__()
 
         self.cfg = cfg
@@ -22,23 +22,40 @@ class PotsdamDataModule(LightningDataModule):
         self.data_indices = np.array([0])
         self.all_indices = None
 
+        self.human_data = human_data
+        self.pseudo_data = pseudo_data
+
     def setup(self, stage: str = None):
-        path_to_training_dataset = os.path.join(self.cfg["data"]["path_to_dataset"], "training_set")
+        path_to_training_human_dataset = os.path.join(self.cfg["data"]["path_to_dataset"], "training_set", "human")
+        path_to_training_pseudo_dataset = os.path.join(self.cfg["data"]["path_to_dataset"], "training_set", "pseudo")
+
         path_to_validation_dataset = os.path.join(self.cfg["data"]["path_to_dataset"], "validation_set")
         path_to_test_dataset = os.path.join(self.cfg["data"]["path_to_dataset"], "test_set")
 
-        # Assign datasets for use in dataloaders
+        self._train_human, self._train_pseudo, self._val, self._test = None, None, None, None
         if stage == "fit" or stage is None:
-            self._train = PotsdamDataset(
-                path_to_training_dataset, self.cfg, transformations=get_transformations(self.cfg, "train")
-            )
+            self._train_human, self._train_pseudo = None, None
+            if self.human_data:
+                self._train_human = PotsdamDataset(
+                    path_to_training_human_dataset, self.cfg, transformations=get_transformations(self.cfg, "train")
+                )
+            if self.pseudo_data:
+                try:
+                    self._train_pseudo = PotsdamDataset(
+                        path_to_training_pseudo_dataset,
+                        self.cfg,
+                        transformations=get_transformations(self.cfg, "train"),
+                    )
+                except:
+                    pass
+
             self._val = PotsdamDataset(
                 path_to_validation_dataset, self.cfg, transformations=get_transformations(self.cfg, "val")
             )
 
             if self.active_learning and self.all_indices is None:
-                train_indices = np.arange(len(self._train))
-                max_num_indices = min(len(self._train), self.max_collected_images)
+                train_indices = np.arange(len(self._train_human))
+                max_num_indices = min(len(self._train_human), self.max_collected_images)
                 self.all_indices = np.sort(np.random.choice(train_indices, size=max_num_indices, replace=False))
 
         if stage == "test" or stage is None:
@@ -58,48 +75,83 @@ class PotsdamDataModule(LightningDataModule):
         return self.all_indices[msk]
 
     def unlabeled_dataloader(self) -> DataLoader:
-        batch_size = self.cfg["data"]["batch_size"]
+        batch_size = self.cfg["data"]["batch_size"]["total"]
         n_workers = self.cfg["data"]["num_workers"]
 
-        train_dataset = self._train
-        unlabeled_data = Subset(train_dataset, self.get_unlabeled_data_indices())
+        unlabeled_data = Subset(self._train_human, self.get_unlabeled_data_indices())
+        return DataLoader(
+            unlabeled_data,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=n_workers,
+        )
 
-        loader = DataLoader(unlabeled_data, batch_size=batch_size, shuffle=False, num_workers=n_workers)
-
-        return loader
-
-    def train_dataloader(self) -> DataLoader:
+    def train_dataloader(self) -> Union[Dict, DataLoader]:
         shuffle = self.cfg["data"]["train_shuffle"]
-        batch_size = self.cfg["data"]["batch_size"]
+        batch_size_total = self.cfg["data"]["batch_size"]["total"]
+        batch_size_human = self.cfg["data"]["batch_size"]["human"] if self._train_pseudo else batch_size_total
+        batch_size_pseudo = self.cfg["data"]["batch_size"]["pseudo"] if self._train_pseudo else 0
         n_workers = self.cfg["data"]["num_workers"]
 
-        train_dataset = self._train
         if self.active_learning:
-            train_dataset = Subset(train_dataset, self.data_indices)
+            return DataLoader(
+                Subset(self._train_human, self.data_indices),
+                batch_size=batch_size_total,
+                shuffle=shuffle,
+                num_workers=n_workers,
+            )
 
-        loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=n_workers)
+        loaders = {}
+        if self._train_human:
+            loaders["human"] = DataLoader(
+                self._train_human,
+                batch_size=batch_size_human,
+                shuffle=shuffle,
+                num_workers=n_workers,
+            )
+        if self._train_pseudo:
+            loaders["pseudo"] = DataLoader(
+                self._train_pseudo,
+                batch_size=batch_size_pseudo,
+                shuffle=shuffle,
+                num_workers=n_workers,
+            )
 
-        return loader
+        return loaders
 
     def val_dataloader(self) -> DataLoader:
-        batch_size = self.cfg["data"]["batch_size"]
+        batch_size = self.cfg["data"]["batch_size"]["total"]
         n_workers = self.cfg["data"]["num_workers"]
 
-        loader = DataLoader(self._val, batch_size=batch_size, num_workers=n_workers, shuffle=False)
+        loader = DataLoader(
+            self._val,
+            batch_size=batch_size,
+            num_workers=n_workers,
+            shuffle=False,
+        )
 
         return loader
 
     def test_dataloader(self) -> DataLoader:
-        batch_size = self.cfg["data"]["batch_size"]
+        batch_size = self.cfg["data"]["batch_size"]["total"]
         n_workers = self.cfg["data"]["num_workers"]
 
-        loader = DataLoader(self._test, batch_size=batch_size, num_workers=n_workers, shuffle=False)
+        loader = DataLoader(
+            self._test,
+            batch_size=batch_size,
+            num_workers=n_workers,
+            shuffle=False,
+        )
 
         return loader
 
 
 def is_image(filename):
     return any(filename.endswith(ext) for ext in [".jpg", ".png"])
+
+
+def is_numpy_array(filename):
+    return any(filename.endswith(ext) for ext in [".np", ".npy"])
 
 
 class PotsdamDataset(Dataset):
@@ -134,6 +186,28 @@ class PotsdamDataset(Dataset):
                 self.anno_files.append(fname)
         self.anno_files.sort()
 
+        # get path to all annotation masks
+        self.load_anno_masks = False
+        self.path_to_anno_masks = os.path.join(path_to_dataset, "anno_mask")
+        if os.path.exists(self.path_to_anno_masks):
+            self.load_anno_masks = True
+            self.anno_mask_files = []
+            for fname in os.listdir(self.path_to_anno_masks):
+                if is_numpy_array(fname):
+                    self.anno_mask_files.append(fname)
+            self.anno_mask_files.sort()
+
+        # get path to all prediction uncertainties
+        self.load_uncertainties = False
+        self.path_to_uncertainties = os.path.join(path_to_dataset, "uncertainty")
+        if os.path.exists(self.path_to_uncertainties):
+            self.load_uncertainties = True
+            self.uncertainty_files = []
+            for fname in os.listdir(self.path_to_uncertainties):
+                if is_image(fname):
+                    self.uncertainty_files.append(fname)
+            self.uncertainty_files.sort()
+
         # specify image transformations
         self.img_to_tensor = transforms.ToTensor()
         self.transformations = transformations
@@ -146,14 +220,38 @@ class PotsdamDataset(Dataset):
         path_to_current_anno = os.path.join(self.path_to_annos, self.anno_files[idx])
         anno = self.get_anno(path_to_current_anno)
 
-        # apply a set of transformations to the raw_image, image and anno
+        anno_mask = torch.ones((1, anno.size(1), anno.size(2))).bool()
+        if self.load_anno_masks:
+            path_to_current_anno_mask = os.path.join(self.path_to_anno_masks, self.anno_mask_files[idx])
+            anno_mask = self.get_anno_mask(path_to_current_anno_mask)
+
+        anno_mask_sum = torch.sum(anno_mask)
+
+        uncertainty = torch.zeros((1, anno.size(1), anno.size(2)))
+        if self.load_uncertainties:
+            if len(self.uncertainty_files) > idx:
+                path_to_current_uncertainty = os.path.join(self.path_to_uncertainties, self.uncertainty_files[idx])
+                if os.path.exists(path_to_current_uncertainty):
+                    uncertainty = self.get_uncertainty(path_to_current_uncertainty)
+
+        # apply a set of transformations to the raw_image, image, anno and uncertainty
         for transformer in self.transformations:
-            img_pil, img, anno = transformer(img_pil, img, anno)
+            img_pil, img, anno, anno_mask, uncertainty = transformer(img_pil, img, anno, anno_mask, uncertainty)
 
         if self.task == "classification":
             anno = self.remap_annotation(anno.numpy())
 
-        return {"data": img, "image": img, "anno": anno, "index": idx}
+        anno_mask = anno_mask.squeeze(dim=0)
+        anno = self.apply_anno_mask(anno, anno_mask)
+
+        return {
+            "data": img,
+            "image": img,
+            "anno": anno,
+            "anno_mask_sum": anno_mask_sum,
+            "uncertainty": uncertainty,
+            "index": idx,
+        }
 
     def __len__(self) -> int:
         return len(self.image_files)
@@ -166,11 +264,22 @@ class PotsdamDataset(Dataset):
             return torch.from_numpy(anno).long()
         elif self.task == "regression":
             anno = cv2.imread(path_to_current_anno, cv2.IMREAD_GRAYSCALE)  # 0 to 255 value range
-            anno = anno.astype(np.float32)  # torch does not support conversion of uint16, now in HW mode
-            anno = (self.cfg["model"]["value_range"]["max_value"] / 255) * anno
+            anno = anno.astype(np.float32) / 255  # normalize targets between 0 and 1
+            anno = np.moveaxis(anno, -1, 0)  # now in HW mode
             return torch.from_numpy(anno).float().unsqueeze(dim=0)
         else:
             raise NotImplementedError(f"{self.task} task is not implemented for Potsdam dataset!")
+
+    @staticmethod
+    def get_anno_mask(path_to_current_anno_mask: str) -> torch.Tensor:
+        anno_mask = np.load(path_to_current_anno_mask)
+        return torch.from_numpy(anno_mask).unsqueeze(dim=0).bool()
+
+    @staticmethod
+    def get_uncertainty(path_to_current_uncertainty: str) -> torch.Tensor:
+        uncertainty = cv2.imread(path_to_current_uncertainty, cv2.IMREAD_GRAYSCALE)  # 0 to 255 value range
+        uncertainty = uncertainty.astype(np.float32) / 255  # normalize uncertainties between 0 and 1
+        return torch.from_numpy(uncertainty).float().unsqueeze(dim=0)
 
     @staticmethod
     def remap_annotation(anno: np.array) -> torch.Tensor:
@@ -218,3 +327,8 @@ class PotsdamDataset(Dataset):
         remapped[mask_bg] = 6
 
         return torch.from_numpy(remapped).long()
+
+    @staticmethod
+    def apply_anno_mask(anno: torch.Tensor, anno_mask: torch.Tensor) -> torch.Tensor:
+        anno[~anno_mask] = 0
+        return anno.long()

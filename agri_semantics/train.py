@@ -61,8 +61,11 @@ def main(config, weights, checkpoint):
     cfg["git_commit_version"] = str(subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).strip())
 
     # Load data and model
-    data = get_data_module(cfg)
-    model = get_model(cfg)
+    data = get_data_module(
+        cfg, human_data=cfg["data"]["batch_size"]["human"] > 0, pseudo_data=cfg["data"]["batch_size"]["pseudo"] > 0
+    )
+    data.setup()
+    model = get_model(cfg, num_train_data=len(data.train_dataloader()["human"].dataset))
     print(model)
 
     if weights:
@@ -81,7 +84,8 @@ def main(config, weights, checkpoint):
 
     # Setup trainer
     trainer = Trainer(
-        gpus=cfg["train"]["n_gpus"],
+        accelerator="gpu",
+        devices=cfg["train"]["n_gpus"],
         logger=tb_logger,
         resume_from_checkpoint=checkpoint,
         max_epochs=cfg["train"]["max_epoch"],

@@ -10,39 +10,37 @@ data:
         height: 480
         keep_aspect_ratio: false
     depth: 3
-
-    batch_size: 8
+    batch_size:
+        total: 8
+        human: 8
+        pseudo: 0
     train_shuffle: true
     num_workers: 0
 
 ##Training
 train:
     n_gpus: 1
-    num_workers: 4
-    max_epoch: 500
-    lr: 0.0001
-    weight_decay: 0.001
+    num_workers: 0
+    lr: 0.001
+    max_epoch: 250
+    weight_decay: 0.0001
     num_mc_aleatoric: 50
     num_mc_epistemic: 50
-    patience: 500
-
+    patience: 250
+    scheduler: 'constant'  # constant, one_cycle, multi_step
+    one_cycle:
+        init_lr: 0.00001
+        max_lr: 0.05
+        final_lr: 0.0001
+        anneal_epoch: 20
+    multi_step:
+        milestones: [150]
+        gamma: 0.1
     transformations:
-        # random_rotation:
-        #   min_angle: -180
-        #   max_angle:  180
-        #   step_size:   2
-        # random_crop:
-        #   height:
-        #   width: 200
         resize:
             height: 480
             width: 720
             keep_aspect_ratio: false
-        #color_jitter:
-        #  brightness: 0.0 # 0.0-1.0
-        #  contrast: 0.0 # 0.0-1.0
-        #  saturation: 0.8 # 0.0-1.0
-        #  hue: 0.0 # -0.5-0.5
 
 val:
     transformations:
@@ -60,10 +58,12 @@ test:
 
 ##Network
 model:
-    name: 'erfnet'
+    name: 'erfnet' # erfnet, bayesian_erfnet, evidential_erfnet
     task: 'classification' # regression, classification
     aleatoric_model: false
     ensemble_model: false
+    evidential_model: false
+    bilinear_upsampling: false
     num_models: 1
     epistemic_version: 'all'
     deep_encoder: false
@@ -73,12 +73,16 @@ model:
     value_range: # used for bounding predicted regression values
         min_value: 0.0
         max_value: 25.5
-    loss: 'xentropy' # xentropy, mse
+    loss:
+        fn_name: "xentropy" # xentropy, soft_iou, mse, pac_type_2_mle, xentropy_bayes_risk, mse_bayes_risk
+        uniform_label_smoothing: 0.00 # [0, 1]
+        uncertainty_aware_label_smoothing: false
+        kl_div_anneal_epochs: 25
     in_channels: 3
-    dropout_prob: 0.5
+    dropout_prob: 0.1
 
-# Active Learning
+##Active Learning
 active_learning:
     type: 'all'
-    num_collected_images: 100
-    max_collected_images: 1000
+    num_collected_images: 50
+    max_collected_images: 500

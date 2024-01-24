@@ -1,7 +1,79 @@
 import torch
 import torch.nn as nn
-import torch.nn.init as init
 import torch.nn.functional as F
+
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None, dropout_prob: float = 0.0):
+        super(ConvBlock, self).__init__()
+
+        mid_channels = out_channels if mid_channels is None else mid_channels
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True),
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+        self.dropout = nn.Dropout2d(dropout_prob)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv1(x)
+        if self.dropout.p != 0:
+            x = self.dropout(x)
+
+        x = self.conv2(x)
+        if self.dropout.p != 0:
+            x = self.dropout(x)
+
+        return x
+
+
+class DownsampleBlock(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, dropout_prob: float = 0.0):
+        super(DownsampleBlock, self).__init__()
+
+        self.down_sample_block = nn.Sequential(
+            nn.MaxPool2d(2), ConvBlock(in_channels, out_channels, dropout_prob=dropout_prob)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.down_sample_block(x)
+
+
+class UpsampleBlock(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, bilinear: bool = False, dropout_prob: float = 0.0):
+        super(UpsampleBlock, self).__init__()
+
+        if bilinear:
+            self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            self.conv = ConvBlock(in_channels, out_channels, in_channels // 2, dropout_prob=dropout_prob)
+        else:
+            self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
+            self.conv = ConvBlock(in_channels, out_channels, dropout_prob=dropout_prob)
+
+    def forward(self, x: torch.Tensor, x_enc: torch.Tensor) -> torch.Tensor:
+        x = self.up(x)
+        diff_y = x_enc.size()[2] - x.size()[2]
+        diff_x = x_enc.size()[3] - x.size()[3]
+
+        x = F.pad(x, [diff_x // 2, diff_x - diff_x // 2, diff_y // 2, diff_y - diff_y // 2])
+        x = torch.cat([x_enc, x], dim=1)
+
+        return self.conv(x)
+
+
+class OutputConv(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int):
+        super(OutputConv, self).__init__()
+
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x: int) -> torch.Tensor:
+        return self.conv(x)
 
 
 ##############################################################################################

@@ -1,7 +1,9 @@
 """ Test different loss functions.
 """
 import unittest
+
 import torch
+
 from . import get_criterion
 
 

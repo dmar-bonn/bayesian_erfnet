@@ -3,16 +3,15 @@ from typing import Dict
 
 import numpy as np
 import torch
-from agri_semantics.constants import Models
 from agri_semantics.datasets import get_data_module
 from agri_semantics.models import get_model
 from agri_semantics.utils import utils
 from pytorch_lightning import LightningDataModule
+from pytorch_lightning import LightningModule
 from pytorch_lightning import Trainer
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-from pytorch_lightning.core.lightning import LightningModule
 
 
 class ActiveLearner:
@@ -71,7 +70,8 @@ class ActiveLearner:
         )
 
         trainer = Trainer(
-            gpus=self.cfg["train"]["n_gpus"],
+            accelerator="gpu",
+            devices=self.cfg["train"]["n_gpus"],
             logger=tb_logger,
             resume_from_checkpoint=self.initial_checkpoint_path,
             max_epochs=self.cfg["train"]["max_epoch"],
@@ -140,7 +140,8 @@ class BALDActiveLearner(ActiveLearner):
 
         self.num_mc_epistemic = cfg["train"]["num_mc_epistemic"]
         self.num_mc_aleatoric = cfg["train"]["num_mc_aleatoric"]
-        self.aleatoric_model = cfg["model"]["name"] == Models.BAYESIAN_ERFNET
+        self.aleatoric_model = cfg["model"]["aleatoric_model"]
+        self.evidential_model = cfg["model"]["evidential_model"]
 
     def select_data(self):
         unlabeled_indices = self.data_module.get_unlabeled_data_indices()
@@ -149,17 +150,23 @@ class BALDActiveLearner(ActiveLearner):
         bald_objectives = np.ones(len(unlabeled_indices))
 
         for j, batch in enumerate(unlabeled_dataloader):
-            mean_predictions, uncertainty_predictions, hidden_representations = utils.get_predictions(
+            (
+                mean_predictions,
+                epistemic_unc_predictions,
+                aleatoric_unc_predictions,
+                hidden_representations,
+            ) = utils.get_predictions(
                 self.model,
                 batch,
                 num_mc_dropout=self.num_mc_epistemic,
                 aleatoric_model=self.aleatoric_model,
+                evidential_model=self.evidential_model,
                 num_mc_aleatoric=self.num_mc_aleatoric,
                 ensemble_model=False,
                 device=self.device,
             )
-            mean_mutual_information = np.mean(uncertainty_predictions, axis=(1, 2))
+            mean_epistemic_unc_information = np.mean(epistemic_unc_predictions, axis=(1, 2))
             for i, idx in enumerate(batch["index"]):
-                bald_objectives[unlabeled_indices == idx.item()] = mean_mutual_information[i]
+                bald_objectives[unlabeled_indices == idx.item()] = mean_epistemic_unc_information[i]
 
         return unlabeled_indices[np.argpartition(bald_objectives, -sample_size)[-sample_size:]]

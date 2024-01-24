@@ -14,7 +14,7 @@ data:
     depth: 3
     batch_size: 8
     train_shuffle: true
-    num_workers: 0
+    num_workers: 4
 
 ##Training
 train:
@@ -65,6 +65,8 @@ model:
     task: 'regression' # regression, classification
     aleatoric_model: false
     ensemble_model: false
+    evidential_model: false
+    bilinear_upsampling: false
     num_models: 1
     epistemic_version: 'all'
     deep_encoder: false

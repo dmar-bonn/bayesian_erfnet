@@ -2,9 +2,8 @@ import subprocess
 from os.path import abspath, dirname, join
 
 import click
-import yaml
 import torch
-
+import yaml
 from agri_semantics.datasets import get_data_module
 
 

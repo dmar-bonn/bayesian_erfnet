@@ -6,11 +6,10 @@ import numpy as np
 import torch
 import yaml
 from PIL import Image
+from agri_semantics.utils import resize
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
-
-from agri_semantics.utils import resize
 
 
 class UAVDataModule(LightningDataModule):

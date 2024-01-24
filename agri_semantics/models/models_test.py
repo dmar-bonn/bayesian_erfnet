@@ -1,7 +1,7 @@
-import os
+import unittest
+
 import torch
 import torch.nn as nn
-import unittest
 
 from . import get_model, get_net
 

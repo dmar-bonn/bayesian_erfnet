@@ -65,6 +65,8 @@ model:
     task: 'classification' # regression, classification
     aleatoric_model: false
     ensemble_model: false
+    evidential_model: false
+    bilinear_upsampling: false
     num_models: 1
     epistemic_version: 'all'
     deep_encoder: false

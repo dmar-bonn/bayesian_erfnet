@@ -1,11 +1,11 @@
-import click
 from os.path import join, dirname, abspath
-from pytorch_lightning import Trainer
-from pytorch_lightning import loggers as pl_loggers
-import yaml
 
+import click
+import yaml
 from agri_semantics.datasets import get_data_module
 from agri_semantics.models import get_model
+from pytorch_lightning import Trainer
+from pytorch_lightning import loggers as pl_loggers
 
 
 @click.command()
@@ -31,7 +31,7 @@ def main(config, checkpoint):
     tb_logger = pl_loggers.TensorBoardLogger("experiments/" + cfg["experiment"]["id"], default_hp_metric=False)
 
     # Setup trainer
-    trainer = Trainer(logger=tb_logger, gpus=cfg["train"]["n_gpus"])
+    trainer = Trainer(logger=tb_logger, accelerator="gpu", devices=cfg["train"]["n_gpus"])
 
     # Test!
     trainer.test(model, data)

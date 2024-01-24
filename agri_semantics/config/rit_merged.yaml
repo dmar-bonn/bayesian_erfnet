@@ -10,39 +10,35 @@ data:
         height:
         keep_aspect_ratio: true
     depth: 3
-
-    batch_size: 8
+    batch_size:
+        total: 8
+        human: 2
+        pseudo: 6
     train_shuffle: true
-    num_workers: 0
+    num_workers: 4
     merge: true
 
 ##Training
 train:
     n_gpus: 1
     num_workers: 4
-    max_epoch: 500
-    lr: 0.0001
-    weight_decay: 0.001
+    lr:
+        scheduler: true
+        init_lr: 0.00001
+        max_lr: 0.05
+        final_lr: 0.0001
+        anneal_epoch: 20
+    max_epoch: 100
+    weight_decay: 0.0001
     num_mc_aleatoric: 50
     num_mc_epistemic: 50
-    patience: 500
+    patience: 100
+
     transformations:
-        # random_rotation:
-        #   min_angle: -180
-        #   max_angle:  180
-        #   step_size:   2
-        # random_crop:
-        #   height:
-        #   width: 200
         resize:
             height:
             width: 344
             keep_aspect_ratio: true
-        #color_jitter:
-        #  brightness: 0.0 # 0.0-1.0
-        #  contrast: 0.0 # 0.0-1.0
-        #  saturation: 0.8 # 0.0-1.0
-        #  hue: 0.0 # -0.5-0.5
 
 val:
     transformations:
@@ -60,20 +56,26 @@ test:
 
 ##Network
 model:
-    name: 'erfnet'
+    name: 'erfnet' # erfnet, bayesian_erfnet, evidential_erfnet
     task: 'classification' # regression, classification
     aleatoric_model: false
     ensemble_model: false
+    evidential_model: false
+    bilinear_upsampling: false
     num_models: 1
     epistemic_version: 'all'
     deep_encoder: false
     shared_decoder: true
     num_classes: 6
-    num_classes_pretrained: 20
+    num_classes_pretrained: 6
     value_range: # used for bounding predicted regression values
         min_value: 0.0
         max_value: 25.5
-    loss: 'xentropy' # xentropy, mse
+    loss:
+        fn_name: "xentropy" # xentropy, soft_iou, mse, pac_type_2_mle, xentropy_bayes_risk, mse_bayes_risk
+        uniform_label_smoothing: 0.00 # [0, 1]
+        uncertainty_aware_label_smoothing: false
+        kl_div_anneal_epochs: 25
     in_channels: 3
     dropout_prob: 0.5
 

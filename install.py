@@ -1,8 +1,8 @@
-import subprocess
-import os
-from pathlib import Path
 import fileinput
+import os
+import subprocess
 import sys
+from pathlib import Path
 
 
 # From https://stackoverflow.com/questions/39086/search-and-replace-a-line-in-a-file-in-python/290494

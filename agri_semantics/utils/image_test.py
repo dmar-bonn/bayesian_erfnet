@@ -1,10 +1,8 @@
 """ Perform tests for auxiliary image functions.
 """
-import pdb
 import unittest
 
 import torch
-import torchvision.transforms.functional as TF
 
 from .image import interpolation_modes_from_int, resize
 

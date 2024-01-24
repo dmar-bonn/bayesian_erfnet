@@ -23,10 +23,12 @@ class AleatoricERFNetModel(nn.Module):
         deep_encoder: bool = False,
         epistemic_version: str = "standard",
         output_fn: callable = None,
+        variance_output_fn: callable = None,
     ):
         super(AleatoricERFNetModel, self).__init__()
 
         self.output_fn = output_fn
+        self.variance_output_fn = variance_output_fn
         self.num_classes = num_classes
         self.use_shared_decoder = use_shared_decoder
 
@@ -49,6 +51,9 @@ class AleatoricERFNetModel(nn.Module):
 
         if self.output_fn is not None:
             output_seg = self.output_fn(output_seg)
+
+        if self.variance_output_fn is not None:
+            output_std = self.variance_output_fn(output_std)
 
         return output_seg, output_std, output_enc
 
@@ -172,7 +177,6 @@ class ERFNetAleatoricSharedDecoder(nn.Module):
         self.layers.append(blocks.non_bottleneck_1d(16, dropout_prob_3, 1))
 
         self.output_conv = nn.ConvTranspose2d(16, num_classes + 1, 2, stride=2, padding=0, output_padding=0, bias=True)
-        self.output_std_fn = nn.Softplus(beta=1)
 
     @staticmethod
     def get_dropout_probs(dropout_prob: float, epistemic_version: str) -> Tuple[float, float, float]:
@@ -194,8 +198,6 @@ class ERFNetAleatoricSharedDecoder(nn.Module):
             output = layer(output)
 
         output_seg, output_std = self.output_conv(output).split(self.num_classes, 1)
-        output_std = self.output_std_fn(output_std) + 10 ** (-8)
-
         return output_seg, output_std
 
 
@@ -215,7 +217,6 @@ class ERFNetAleatoricUncertaintyDecoder(nn.Module):
         self.layers.append(blocks.non_bottleneck_1d(16, 0, 1))
 
         self.output_conv = nn.ConvTranspose2d(16, 1, 2, stride=2, padding=0, output_padding=0, bias=True)
-        self.output_std_fn = nn.Softplus(beta=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         output = x
@@ -224,7 +225,6 @@ class ERFNetAleatoricUncertaintyDecoder(nn.Module):
             output = layer(output)
 
         output = self.output_conv(output)
-        output = self.output_std_fn(output) + 10 ** (-8)
         return output
 
 
@@ -371,3 +371,82 @@ class ERFNetDecoder(nn.Module):
         output = self.output_conv(output)
 
         return output
+
+
+class UNetModel(nn.Module):
+    def __init__(
+        self,
+        num_classes: int,
+        in_channels: int,
+        dropout_prop: float = 0.0,
+        output_fn: callable = None,
+        bilinear: bool = False,
+    ):
+        super(UNetModel, self).__init__()
+
+        self.output_fn = output_fn
+        self.encoder = UNetEncoder(in_channels, dropout_prop=dropout_prop, bilinear=bilinear)
+        self.decoder = UNetDecoder(num_classes, dropout_prop=dropout_prop, bilinear=bilinear)
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        x1_enc, x2_enc, x3_enc, x4_enc, x5_enc = self.encoder(x)
+        output_seg = self.decoder(x1_enc, x2_enc, x3_enc, x4_enc, x5_enc)
+
+        if self.output_fn is not None:
+            output_seg = self.output_fn(output_seg)
+
+        return output_seg, x5_enc
+
+
+class UNetEncoder(nn.Module):
+    def __init__(self, in_channels: int, dropout_prop: float = 0.0, bilinear: bool = False):
+        super(UNetEncoder, self).__init__()
+
+        factor = 2 if bilinear else 1
+        self.in_channels = in_channels
+        self.dropout_prop = dropout_prop
+
+        self.conv = blocks.ConvBlock(in_channels, 64, dropout_prob=dropout_prop)
+
+        self.down1 = blocks.DownsampleBlock(64, 128, dropout_prob=dropout_prop)
+        self.down2 = blocks.DownsampleBlock(128, 256, dropout_prob=dropout_prop)
+        self.down3 = blocks.DownsampleBlock(256, 512, dropout_prob=dropout_prop)
+        self.down4 = blocks.DownsampleBlock(512, 1024 // factor, dropout_prob=dropout_prop)
+
+    def forward(self, x: torch.Tensor) -> Tuple:
+        x1 = self.conv(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+
+        return x1, x2, x3, x4, x5
+
+
+class UNetDecoder(nn.Module):
+    def __init__(self, num_classes: int, dropout_prop: float = 0.0, bilinear: bool = False):
+        super(UNetDecoder, self).__init__()
+
+        factor = 2 if bilinear else 1
+        self.dropout_prop = dropout_prop
+
+        self.up1 = blocks.UpsampleBlock(1024, 512 // factor, dropout_prob=dropout_prop, bilinear=bilinear)
+        self.up2 = blocks.UpsampleBlock(512, 256 // factor, dropout_prob=dropout_prop, bilinear=bilinear)
+        self.up3 = blocks.UpsampleBlock(256, 128 // factor, dropout_prob=dropout_prop, bilinear=bilinear)
+        self.up4 = blocks.UpsampleBlock(128, 64, dropout_prob=dropout_prop, bilinear=bilinear)
+        self.output_conv = blocks.OutputConv(64, num_classes)
+
+    def forward(
+        self,
+        x1_enc: torch.Tensor,
+        x2_enc: torch.Tensor,
+        x3_enc: torch.Tensor,
+        x4_enc: torch.Tensor,
+        x5_enc: torch.Tensor,
+    ) -> torch.Tensor:
+        x = self.up1(x5_enc, x4_enc)
+        x = self.up2(x, x3_enc)
+        x = self.up3(x, x2_enc)
+        x = self.up4(x, x1_enc)
+
+        return self.output_conv(x)

@@ -1,5 +1,6 @@
 import subprocess
 from os.path import abspath, dirname, join
+from typing import Dict
 
 import click
 import yaml
@@ -8,7 +9,6 @@ from agri_semantics.models import get_model
 from pytorch_lightning import Trainer
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-from typing import Dict
 
 
 ##############################################################################################
@@ -84,14 +84,13 @@ def setup_trainer(model_id: int, cfg: Dict, checkpoint: str) -> Trainer:
         save_last=True,
     )
     tb_logger = pl_loggers.TensorBoardLogger(
-        f"experiments/{cfg['experiment']['id']}",
-        name=f"{cfg['model']['name']}_{model_id}",
-        default_hp_metric=False,
+        f"experiments/{cfg['experiment']['id']}", name=f"{cfg['model']['name']}_{model_id}", default_hp_metric=False
     )
 
     tmp_checkpoint = f"{checkpoint}_model{model_id}.ckpt" if checkpoint is not None else None
     trainer = Trainer(
-        gpus=cfg["train"]["n_gpus"],
+        accelerator="gpu",
+        devices=cfg["train"]["n_gpus"],
         logger=tb_logger,
         resume_from_checkpoint=tmp_checkpoint,
         max_epochs=cfg["train"]["max_epoch"],

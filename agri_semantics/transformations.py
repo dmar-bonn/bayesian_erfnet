@@ -2,15 +2,14 @@
 
 This is relevant for the task of semantic segmentation since the input image and its annotation need to be treated in the same way.
 """
-import math
 import random
 from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple
 
-from PIL.Image import Image as PILImage
 import torch
 import torchvision
 import torchvision.transforms.functional as TF
+from PIL.Image import Image as PILImage
 
 
 class Transformation(ABC):
@@ -18,16 +17,23 @@ class Transformation(ABC):
 
     @abstractmethod
     def __call__(
-        self, raw_image: PILImage, image: torch.Tensor, anno: torch.Tensor
-    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor]:
+        self,
+        raw_image: PILImage,
+        image: torch.Tensor,
+        anno: torch.Tensor,
+        anno_mask: torch.Tensor,
+        uncertainty: torch.Tensor,
+    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Apply a transformation to a given image and its corresponding annotation.
 
         Args:
           image (torch.Tensor): input image to be transformed.
           anno (torch.Tensor): annotation to be transformed.
+          anno_mask (torch.Tensor): annotation mask to be transformed.
+          uncertainty (torch.Tensor): uncertainty to be transformed.
 
         Returns:
-          Tuple[torch.Tensor, torch.Tensor]: transformed image and its corresponding annotation
+          transformed image, annotation, annotation mask, and uncertainty
         """
         raise NotImplementedError
 
@@ -46,14 +52,18 @@ class MyCenterCropTransform(Transformation):
         self.crop_width = crop_width
 
     def __call__(
-        self, raw_image: PILImage, image: torch.Tensor, anno: torch.Tensor
-    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor]:
+        self, raw_image: PILImage, image: torch.Tensor, anno: torch.Tensor, uncertainty: torch.Tensor
+    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor, torch.Tensor]:
         # dimension of each input should be identical
-        assert raw_image.height == image.shape[1] == anno.shape[1], "Dimensions of all input should be identical."
-        assert raw_image.width == image.shape[2] == anno.shape[2], "Dimensions of all input should be identical."
+        assert (
+            raw_image.height == image.shape[1] == anno.shape[1] == uncertainty.shape[1]
+        ), "Dimensions of all input should be identical."
+        assert (
+            raw_image.width == image.shape[2] == anno.shape[2] == uncertainty.shape[2]
+        ), "Dimensions of all input should be identical."
 
         if (self.crop_height is None) or (self.crop_width is None):
-            return raw_image, image, anno
+            return raw_image, image, anno, uncertainty
 
         img_chans, img_height, img_width = image.shape[:3]
         anno_chans = anno.shape[0]
@@ -66,23 +76,28 @@ class MyCenterCropTransform(Transformation):
         raw_image_cropped: PILImage = TF.center_crop(raw_image, [self.crop_height, self.crop_width])  # type: ignore
         image_cropped = TF.center_crop(image, [self.crop_height, self.crop_width])
         anno_cropped = TF.center_crop(anno, [self.crop_height, self.crop_width])
+        uncertainty_cropped = TF.center_crop(uncertainty, [self.crop_height, self.crop_width])
 
-        assert raw_image_cropped.height == self.crop_height, "Cropped raw image has not the desired size."
+        assert raw_image_cropped.height == self.crop_height, "Cropped raw image has not the desired height."
         assert raw_image_cropped.width == self.crop_width, "Cropped raw image has not the desired width."
 
         assert image_cropped.shape[0] == img_chans, "Cropped image has an unexpected number of channels."
-        assert image_cropped.shape[1] == self.crop_height, "Cropped image has not the desired size."
+        assert image_cropped.shape[1] == self.crop_height, "Cropped image has not the desired height."
         assert image_cropped.shape[2] == self.crop_width, "Cropped image has not the desired width."
 
         assert anno_cropped.shape[0] == anno_chans, "Cropped anno has an unexpected number of channels."
-        assert anno_cropped.shape[1] == self.crop_height, "Cropped anno has not the desired size."
+        assert anno_cropped.shape[1] == self.crop_height, "Cropped anno has not the desired height."
         assert anno_cropped.shape[2] == self.crop_width, "Cropped anno has not the desired width."
 
-        return raw_image_cropped, image_cropped, anno_cropped
+        assert uncertainty_cropped.shape[0] == 1, "Cropped uncertainty has an unexpected number of channels."
+        assert uncertainty_cropped.shape[1] == self.crop_height, "Cropped uncertainty has not the desired height."
+        assert uncertainty_cropped.shape[2] == self.crop_width, "Cropped uncertainty has not the desired width."
+
+        return raw_image_cropped, image_cropped, anno_cropped, uncertainty_cropped
 
 
 class MyRandomCropTransform(Transformation):
-    """Extract a random patch from a given image and its corresponding annnotation."""
+    """Extract a random patch from a given image and its corresponding annotation."""
 
     def __init__(self, crop_height: Optional[int] = None, crop_width: Optional[int] = None):
         """Set height and width of cropping region.
@@ -95,31 +110,36 @@ class MyRandomCropTransform(Transformation):
         self.crop_width = crop_width
 
     def __call__(
-        self, raw_image: PILImage, image: torch.Tensor, anno: torch.Tensor
-    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor]:
+        self, raw_image: PILImage, image: torch.Tensor, anno: torch.Tensor, uncertainty: torch.Tensor
+    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Apply cropping to an image and its corresponding annotation.
 
         Args:
             image (torch.Tensor): image to be cropped of shape [C x H x W]
             anno (torch.Tensor): annotation to be cropped of shape [1 x H x W]
+            uncertainty (torch.Tensor): uncertainty to be cropped of shape [1 x H x W]
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]: cropped image, cropped anno
+            torch.Tensor, torch.Tensor, Tensor: cropped image, cropped anno, cropped uncertainty
         """
         # dimension of each input should be identical
-        assert raw_image.height == image.shape[1] == anno.shape[1], "Dimensions of all input should be identical."
-        assert raw_image.width == image.shape[2] == anno.shape[2], "Dimensions of all input should be identical."
+        assert (
+            raw_image.height == image.shape[1] == anno.shape[1] == uncertainty.shape[1]
+        ), "Dimensions of all input should be identical."
+        assert (
+            raw_image.width == image.shape[2] == anno.shape[2] == uncertainty.shape[2]
+        ), "Dimensions of all input should be identical."
 
         if (self.crop_height is None) or (self.crop_width is None):
-            return raw_image, image, anno
+            return raw_image, image, anno, uncertainty
 
         img_chans, img_height, img_width = image.shape[:3]
         anno_chans = anno.shape[0]
 
         if self.crop_width > img_width:
-            raise ValueError("Width of cropping region must not be greather than img width")
+            raise ValueError("Width of cropping region must not be greater than img width")
         if self.crop_height > img_height:
-            raise ValueError("Height of cropping region must not be greather than img height.")
+            raise ValueError("Height of cropping region must not be greater than img height.")
 
         max_x = img_width - self.crop_width
         x_start = random.randint(0, max_x)
@@ -133,19 +153,24 @@ class MyRandomCropTransform(Transformation):
         raw_image_cropped: PILImage = TF.crop(raw_image, y_start, x_start, self.crop_height, self.crop_width)  # type: ignore
         image_cropped = TF.crop(image, y_start, x_start, self.crop_height, self.crop_width)
         anno_cropped = TF.crop(anno, y_start, x_start, self.crop_height, self.crop_width)
+        uncertainty_cropped = TF.crop(uncertainty, y_start, x_start, self.crop_height, self.crop_width)
 
-        assert raw_image_cropped.height == self.crop_height, "Cropped raw image has not the desired size."
+        assert raw_image_cropped.height == self.crop_height, "Cropped raw image has not the desired height."
         assert raw_image_cropped.width == self.crop_width, "Cropped raw image has not the desired width."
 
         assert image_cropped.shape[0] == img_chans, "Cropped image has an unexpected number of channels."
-        assert image_cropped.shape[1] == self.crop_height, "Cropped image has not the desired size."
+        assert image_cropped.shape[1] == self.crop_height, "Cropped image has not the desired height."
         assert image_cropped.shape[2] == self.crop_width, "Cropped image has not the desired width."
 
         assert anno_cropped.shape[0] == anno_chans, "Cropped anno has an unexpected number of channels."
-        assert anno_cropped.shape[1] == self.crop_height, "Cropped anno has not the desired size."
+        assert anno_cropped.shape[1] == self.crop_height, "Cropped anno has not the desired height."
         assert anno_cropped.shape[2] == self.crop_width, "Cropped anno has not the desired width."
 
-        return raw_image_cropped, image_cropped, anno_cropped
+        assert uncertainty_cropped.shape[0] == 1, "Cropped uncertainty has an unexpected number of channels."
+        assert uncertainty_cropped.shape[1] == self.crop_height, "Cropped uncertainty has not the desired height."
+        assert uncertainty_cropped.shape[2] == self.crop_width, "Cropped uncertainty has not the desired width."
+
+        return raw_image_cropped, image_cropped, anno_cropped, uncertainty_cropped
 
 
 class MyResizeTransform(Transformation):
@@ -172,23 +197,34 @@ class MyResizeTransform(Transformation):
         self.keep_aspect_ratio = keep_aspect_ratio
 
     def __call__(
-        self, raw_image: PILImage, image: torch.Tensor, anno: torch.Tensor
-    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor]:
+        self,
+        raw_image: PILImage,
+        image: torch.Tensor,
+        anno: torch.Tensor,
+        anno_mask: torch.Tensor,
+        uncertainty: torch.Tensor,
+    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Apply resizing to an image and its corresponding annotation.
 
         Args:
-            image (torch.Tensor): image to be resized of shape [C x H x W]
-            anno (torch.Tensor): anno to be cropped of shape [C x H x W]
+            image (torch.Tensor): image to be resized to shape [3 x H x W]
+            anno (torch.Tensor): anno to be resized to shape [3 x H x W]
+            anno_mask (torch.Tensor): anno mask to be resized to shape [1 x H x W]
+            uncertainty (torch.Tensor): uncertainty to be resized to shape [1 x H x W]
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]: [description]
+            torch.Tensor, torch.Tensor, torch.Tensor: resized image, anno, uncertainty
         """
         # dimension of each input should be identical
-        assert raw_image.height == image.shape[1] == anno.shape[1], "Dimensions of all input should be identical."
-        assert raw_image.width == image.shape[2] == anno.shape[2], "Dimensions of all input should be identical."
+        assert (
+            raw_image.height == image.shape[1] == anno.shape[1] == anno_mask.shape[1] == uncertainty.shape[1]
+        ), "Dimensions of all input should be identical."
+        assert (
+            raw_image.width == image.shape[2] == anno.shape[2] == anno_mask.shape[2] == uncertainty.shape[2]
+        ), "Dimensions of all input should be identical."
 
         if (self.resized_width is None) and (self.resized_height is None):
-            return raw_image, image, anno
+            return raw_image, image, anno, anno_mask, uncertainty
 
         # original image dimension
         h, w = image.shape[1], image.shape[2]
@@ -203,16 +239,24 @@ class MyResizeTransform(Transformation):
             else:
                 resized_width = w
 
-            raw_image_resized: PILImage = TF.resize(raw_image, [self.resized_height, resized_width], interpolation=TF.InterpolationMode.BILINEAR)  # type: ignore
+            raw_image_resized: PILImage = TF.resize(
+                raw_image, [self.resized_height, resized_width], interpolation=TF.InterpolationMode.BILINEAR
+            )
             image_resized = TF.resize(
                 image, [self.resized_height, resized_width], interpolation=TF.InterpolationMode.BILINEAR
             )
             anno_resized = TF.resize(
                 anno, [self.resized_height, resized_width], interpolation=TF.InterpolationMode.NEAREST
             )
+            anno_mask_resized = TF.resize(
+                anno_mask, [self.resized_height, resized_width], interpolation=TF.InterpolationMode.NEAREST
+            )
+            uncertainty_resized = TF.resize(
+                uncertainty, [self.resized_height, resized_width], interpolation=TF.InterpolationMode.NEAREST
+            )
             del resized_width
 
-            return raw_image_resized, image_resized, anno_resized
+            return raw_image_resized, image_resized, anno_resized, anno_mask_resized, uncertainty_resized
 
         # 2nd case - user provides width but not height
         if (self.resized_width is not None) and (self.resized_height is None):
@@ -223,16 +267,24 @@ class MyResizeTransform(Transformation):
             else:
                 resized_height = h
 
-            raw_image_resized: PILImage = TF.resize(raw_image, [resized_height, self.resized_width], interpolation=TF.InterpolationMode.BILINEAR)  # type: ignore
+            raw_image_resized: PILImage = TF.resize(
+                raw_image, [resized_height, self.resized_width], interpolation=TF.InterpolationMode.BILINEAR
+            )
             image_resized = TF.resize(
                 image, [resized_height, self.resized_width], interpolation=TF.InterpolationMode.BILINEAR
             )
             anno_resized = TF.resize(
                 anno, [resized_height, self.resized_width], interpolation=TF.InterpolationMode.NEAREST
             )
+            anno_mask_resized = TF.resize(
+                anno_mask, [resized_height, self.resized_width], interpolation=TF.InterpolationMode.NEAREST
+            )
+            uncertainty_resized = TF.resize(
+                uncertainty, [resized_height, self.resized_width], interpolation=TF.InterpolationMode.NEAREST
+            )
             del resized_height
 
-            return raw_image_resized, image_resized, anno_resized
+            return raw_image_resized, image_resized, anno_resized, anno_mask_resized, uncertainty_resized
         # 3rd case - user provides width and height
         if (self.resized_width is not None) and (self.resized_height is not None):
             assert (self.resized_width > 0) or (self.resized_height > 0)
@@ -242,11 +294,23 @@ class MyResizeTransform(Transformation):
                 "In case width and height are changed the aspect ratio might change. Set 'keep_aspect_ratio' to False to resolve this issue."
             )
 
-        raw_image_resized: PILImage = TF.resize(raw_image, [self.resized_height, self.resized_width], interpolation=TF.InterpolationMode.BILINEAR)  # type: ignore
-        image_resized = TF.resize(image, [self.resized_height, self.resized_width], interpolation=TF.InterpolationMode.BILINEAR)  # type: ignore
-        anno_resized = TF.resize(anno, [self.resized_height, self.resized_width], interpolation=TF.InterpolationMode.NEAREST)  # type: ignore
+        raw_image_resized: PILImage = TF.resize(
+            raw_image, [self.resized_height, self.resized_width], interpolation=TF.InterpolationMode.BILINEAR
+        )
+        image_resized = TF.resize(
+            image, [self.resized_height, self.resized_width], interpolation=TF.InterpolationMode.BILINEAR
+        )
+        anno_resized = TF.resize(
+            anno, [self.resized_height, self.resized_width], interpolation=TF.InterpolationMode.NEAREST
+        )
+        anno_mask_resized = TF.resize(
+            anno_mask, [self.resized_height, self.resized_width], interpolation=TF.InterpolationMode.NEAREST
+        )
+        uncertainty_resized = TF.resize(
+            uncertainty, [self.resized_height, self.resized_width], interpolation=TF.InterpolationMode.NEAREST
+        )
 
-        return raw_image_resized, image_resized, anno_resized
+        return raw_image_resized, image_resized, anno_resized, anno_mask_resized, uncertainty_resized
 
 
 class MyRandomRotationTransform(Transformation):
@@ -260,10 +324,10 @@ class MyRandomRotationTransform(Transformation):
         self.step_size = step_size  # degree
 
     def __call__(
-        self, raw_image: PILImage, image: torch.Tensor, anno: torch.Tensor
-    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor]:
+        self, raw_image: PILImage, image: torch.Tensor, anno: torch.Tensor, uncertainty: torch.Tensor
+    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor, torch.Tensor]:
         if (self.min_angle is None) or (self.max_angle is None) or (self.step_size is None):
-            return raw_image, image, anno
+            return raw_image, image, anno, uncertainty
 
         assert self.min_angle is not None
         assert self.max_angle is not None
@@ -275,11 +339,12 @@ class MyRandomRotationTransform(Transformation):
         angles = torch.arange(self.min_angle, self.max_angle, step=self.step_size)
         random_angle = float(random.choice(list(angles)))  # degree
 
-        raw_image_rotated: PILImage = TF.rotate(raw_image, random_angle, interpolation=TF.InterpolationMode.BILINEAR)  # type: ignore
+        raw_image_rotated: PILImage = TF.rotate(raw_image, random_angle, interpolation=TF.InterpolationMode.BILINEAR)
         image_rotated = TF.rotate(image, random_angle, interpolation=TF.InterpolationMode.BILINEAR)
         anno_rotated = TF.rotate(anno, random_angle, interpolation=TF.InterpolationMode.NEAREST)
+        uncertainty_rotated = TF.rotate(uncertainty, random_angle, interpolation=TF.InterpolationMode.NEAREST)
 
-        return raw_image_rotated, image_rotated, anno_rotated
+        return raw_image_rotated, image_rotated, anno_rotated, uncertainty_rotated
 
 
 class MyRandomColorJitterTransform(Transformation):
@@ -301,16 +366,15 @@ class MyRandomColorJitterTransform(Transformation):
         self.hue = hue
 
     def __call__(
-        self, raw_image: PILImage, image: torch.Tensor, anno: torch.Tensor
-    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor]:
-
+        self, raw_image: PILImage, image: torch.Tensor, anno: torch.Tensor, uncertainty: torch.Tensor
+    ) -> Tuple[PILImage, torch.Tensor, torch.Tensor, torch.Tensor]:
         jitter = torchvision.transforms.ColorJitter(
             brightness=self.brightness, contrast=self.contrast, saturation=self.saturation, hue=self.hue
         )
         raw_image_jitted = jitter(raw_image)
         image_jitted = jitter(image)
 
-        return raw_image_jitted, image_jitted, anno
+        return raw_image_jitted, image_jitted, anno, uncertainty
 
 
 def get_transformations(cfg, stage: str) -> List[Transformation]:

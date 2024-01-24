@@ -80,11 +80,7 @@ def plot_experiment_results(cfg: Dict, active_learner_results: Dict):
 
     for performance_metric in ["test_loss", "test_f1", "test_acc", "test_iou"]:
         ax = sns.lineplot(
-            x="num_data_points",
-            y=performance_metric,
-            hue="method",
-            data=experiment_results_df,
-            linewidth=3,
+            x="num_data_points", y=performance_metric, hue="method", data=experiment_results_df, linewidth=3
         )
         ax.set_title(f"{performance_metric} Performance")
         ax.set_ylabel(f"{performance_metric}")

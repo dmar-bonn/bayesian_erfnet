@@ -1,12 +1,12 @@
-import click
 from os.path import join, dirname, abspath
-from pytorch_lightning import Trainer
-from pytorch_lightning import loggers as pl_loggers
-import yaml
 
+import click
+import yaml
 from agri_semantics.datasets import get_data_module
 from agri_semantics.models import get_model
 from agri_semantics.models.models import EnsembleNet
+from pytorch_lightning import Trainer
+from pytorch_lightning import loggers as pl_loggers
 
 
 @click.command()
@@ -34,7 +34,7 @@ def main(config: str, checkpoint: str):
     tb_logger = pl_loggers.TensorBoardLogger(
         f"experiments/{cfg['experiment']['id']}", name="ensemble", default_hp_metric=False
     )
-    trainer = Trainer(logger=tb_logger, gpus=cfg["train"]["n_gpus"])
+    trainer = Trainer(logger=tb_logger, accelerator="gpu", devices=cfg["train"]["n_gpus"])
     trainer.test(ensemble_model, data)
 
 

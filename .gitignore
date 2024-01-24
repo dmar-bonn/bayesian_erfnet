@@ -232,7 +232,9 @@ dmypy.json
 agri_semantics/datasets/weedmap/
 agri_semantics/datasets/cityscapes/
 agri_semantics/datasets/rit/
+agri_semantics/datasets/rit18/
 agri_semantics/datasets/potsdam/
+agri_semantics/datasets/flightmare/
 
 # Pretrained models
 agri_semantics/models/pretrained/

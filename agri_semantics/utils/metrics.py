@@ -4,13 +4,17 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import seaborn as sns
 import torch
+
+
+def index_out_of_bounds(conf_matrix: torch.Tensor, ignore_index: int) -> bool:
+    class_num = conf_matrix.size(0)
+    return ignore_index < 0 or ignore_index >= class_num or ignore_index is None
 
 
 def precision_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> float:
     def conf_mat_masked(conf_mat):
-        if ignore_index is None:
+        if index_out_of_bounds(conf_mat, ignore_index):
             return conf_mat
 
         conf_mat[ignore_index] = 0.0
@@ -26,7 +30,7 @@ def precision_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index
     per_class_precision = total_true_positives / total_num_predictions
     per_class_precision[total_num_predictions == 0] = 0
 
-    if ignore_index is not None:
+    if not index_out_of_bounds(conf_matrices[0], ignore_index):
         per_class_precision = torch.cat([per_class_precision[:ignore_index], per_class_precision[ignore_index + 1 :]])
 
     return torch.mean(per_class_precision).item()
@@ -34,7 +38,7 @@ def precision_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index
 
 def recall_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> float:
     def conf_mat_masked(conf_mat):
-        if ignore_index is None:
+        if index_out_of_bounds(conf_mat, ignore_index):
             return conf_mat
 
         conf_mat[ignore_index] = 0.0
@@ -50,7 +54,7 @@ def recall_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: i
     per_class_recall = total_true_positives / total_all_positives
     per_class_recall[total_all_positives == 0] = 0
 
-    if ignore_index is not None:
+    if not index_out_of_bounds(conf_matrices[0], ignore_index):
         per_class_recall = torch.cat([per_class_recall[:ignore_index], per_class_recall[ignore_index + 1 :]])
 
     return torch.mean(per_class_recall).item()
@@ -68,7 +72,7 @@ def f1_score_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index:
 
 def per_class_iou_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> torch.Tensor:
     def conf_mat_masked(conf_mat):
-        if ignore_index is None:
+        if index_out_of_bounds(conf_mat, ignore_index):
             return conf_mat
 
         conf_mat[ignore_index] = 0.0
@@ -84,7 +88,7 @@ def per_class_iou_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_i
     iou = total_intersection / total_union
     iou[total_union == 0] = 0
 
-    if ignore_index is not None:
+    if not index_out_of_bounds(conf_matrices[0], ignore_index):
         iou[ignore_index] = 0
 
     return iou
@@ -93,7 +97,7 @@ def per_class_iou_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_i
 def mean_iou_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> float:
     per_class_iou = per_class_iou_from_conf_matrices(conf_matrices, ignore_index=ignore_index)
 
-    if ignore_index is not None:
+    if not index_out_of_bounds(conf_matrices[0], ignore_index):
         per_class_iou = torch.cat([per_class_iou[:ignore_index], per_class_iou[ignore_index + 1 :]])
 
     return torch.mean(per_class_iou).item()
@@ -101,7 +105,7 @@ def mean_iou_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index:
 
 def accuracy_from_conf_matrices(conf_matrices: List[torch.Tensor], ignore_index: int = None) -> float:
     def conf_mat_masked(conf_mat):
-        if ignore_index is None:
+        if index_out_of_bounds(conf_mat, ignore_index):
             return conf_mat
 
         conf_mat[ignore_index, :] = 0.0
@@ -120,11 +124,7 @@ def total_conf_matrix_from_conf_matrices(conf_matrices: List[torch.Tensor]) -> t
     return total_conf_matrix
 
 
-def compute_calibration_info(
-    prediction_probs: torch.Tensor,
-    targets: torch.Tensor,
-    num_bins: int = 20,
-) -> Dict:
+def compute_calibration_info(prediction_probs: torch.Tensor, targets: torch.Tensor, num_bins: int = 20) -> Dict:
     bin_boundaries = torch.linspace(0, 1, num_bins + 1, dtype=torch.float)
     confidences, predictions = torch.transpose(prediction_probs, 1, -1).flatten(0, -2).max(dim=1)
     accuracies = predictions.eq(targets.flatten())
@@ -179,14 +179,12 @@ def compute_calibration_plots(outputs: List[Dict], num_bins: int = 20):
     acc_bin[prop_bin == 0] = 0.0
     conf_bin[prop_bin == 0] = 0.0
 
-    ax = sns.lineplot(
-        x=bin_boundaries.tolist(), y=bin_boundaries.tolist(), color="gray", linestyle="dashed", linewidth=3
-    )
-    sns.lineplot(x=conf_bin.tolist(), y=acc_bin.tolist(), color="red", linewidth=3, ax=ax)
-    ax.set_ylabel("Accuracy", fontsize=15)
-    ax.set_xlabel("Confidence", fontsize=15)
-    ax.tick_params(labelsize=15)
-    fig_ = ax.get_figure()
+    plt.plot(bin_boundaries.tolist(), bin_boundaries.tolist(), color="gray", linestyle="dashed", linewidth=3)
+    plt.plot(conf_bin.tolist(), acc_bin.tolist(), color="red", linewidth=3)
+    plt.ylabel("Accuracy", fontsize=15)
+    plt.xlabel("Confidence", fontsize=15)
+    plt.tick_params(labelsize=15)
+    fig_ = plt.gcf()
     plt.close(fig_)
 
     return fig_
